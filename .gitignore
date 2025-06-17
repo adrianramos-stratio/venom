@@ -30,4 +30,4 @@ docs/report/TFG_Adrian_Ramos_Report.pdf
 dist/
 
 # Obsidian user side
-.obsidian/workspaces.json
+**/.obsidian/workspace.json
