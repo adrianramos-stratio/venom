@@ -158,19 +158,19 @@ mod tests {
     #[test]
     fn test_display_roundtrip() {
         let input = "ghcr.io/stratio/nginx:v2.0";
-        let c = Component::from_str(input).unwrap();
+        let c = ComponentId::from_str(input).unwrap();
         assert_eq!(c.to_string(), input);
     }
 
     #[test]
     fn test_invalid_format_empty() {
-        let err = Component::from_str("").unwrap_err();
-        assert!(matches!(err, ComponentError::InvalidFormat(_)));
+        let err = ComponentId::from_str("").unwrap_err();
+        assert!(matches!(err, ComponentIdError::InvalidFormat(_)));
     }
 
     #[test]
     fn test_invalid_format_just_colon() {
-        let err = Component::from_str(":").unwrap_err();
-        assert!(matches!(err, ComponentError::InvalidFormat(_)));
+        let err = ComponentId::from_str(":").unwrap_err();
+        assert!(matches!(err, ComponentIdError::InvalidFormat(_)));
     }
 }

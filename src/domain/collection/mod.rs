@@ -1,68 +1,107 @@
-use crate::domain::component::Component;
+pub mod event;
+pub mod id;
 
-use actix::Message;
+use std::collections::HashSet;
+
+use crate::domain::collection::event::CollectionEvent;
+use crate::domain::collection::id::CollectionId;
+use crate::domain::component::id::ComponentId;
 use thiserror::Error;
 
-#[derive(Debug, Clone, PartialEq)]
+/// Aggregate root representing a logical collection of components.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Collection {
-    pub name: String,
-    pub components: Vec<Component>,
+    id: CollectionId,
+    components: HashSet<ComponentId>,
 }
 
 impl Collection {
+    /// Create a new collection with a given id and set of components.
     pub fn new(
-        name: impl Into<String>,
-        components: Vec<Component>,
-    ) -> Result<Self, CollectionError> {
-        let name = name.into();
-        if name.trim().is_empty() {
-            return Err(CollectionError::EmptyName);
+        id: CollectionId,
+        components: HashSet<ComponentId>,
+    ) -> Result<(Self, CollectionEvent), CollectionError> {
+        if components.is_empty() {
+            return Err(CollectionError::Empty(id.clone()));
         }
 
-        Ok(Self { name, components })
+        let collection = Self {
+            id: id.clone(),
+            components: components.clone(),
+        };
+
+        let event = CollectionEvent::CollectionCreated {
+            collection_id: id,
+            initial_components: components.into_iter().collect(),
+        };
+
+        Ok((collection, event))
     }
 
-    pub fn diff(&self, new: &Collection) -> Vec<CollectionEvent> {
-        let old: std::collections::HashSet<_> = self.components.iter().cloned().collect();
-        let new: std::collections::HashSet<_> = new.components.iter().cloned().collect();
+    /// Replace all components with a new set, generating added/dropped events.
+    pub fn replace_components(
+        &self,
+        new_components: HashSet<ComponentId>,
+    ) -> Result<(Self, Vec<CollectionEvent>), CollectionError> {
+        if new_components.is_empty() {
+            return Err(CollectionError::Empty(self.id.clone()));
+        }
 
-        new.difference(&old)
-            .map(|c| CollectionEvent::ComponentAdded(c.clone()))
-            .chain(
-                old.difference(&new)
-                    .map(|c| CollectionEvent::ComponentDropped(c.clone())),
-            )
-            .chain(
-                new.intersection(&old)
-                    .map(|c| CollectionEvent::ComponentUnchanged(c.clone())),
-            )
-            .collect()
+        let mut events = Vec::new();
+
+        for removed in self.components.difference(&new_components) {
+            events.push(CollectionEvent::ComponentDropped {
+                collection_id: self.id.clone(),
+                component_id: removed.clone(),
+            });
+        }
+
+        for added in new_components.difference(&self.components) {
+            events.push(CollectionEvent::ComponentAdded {
+                collection_id: self.id.clone(),
+                component_id: added.clone(),
+            });
+        }
+
+        let updated = Self {
+            id: self.id.clone(),
+            components: new_components,
+        };
+
+        Ok((updated, events))
+    }
+
+    /// Apply a single event to mutate the state (used for event sourcing).
+    pub fn apply(&mut self, event: &CollectionEvent) {
+        match event {
+            CollectionEvent::ComponentAdded { component_id, .. } => {
+                self.components.insert(component_id.clone());
+            }
+            CollectionEvent::ComponentDropped { component_id, .. } => {
+                self.components.remove(component_id);
+            }
+            CollectionEvent::CollectionCreated {
+                initial_components, ..
+            } => {
+                self.components = initial_components.iter().cloned().collect();
+            }
+        }
+    }
+
+    /// Read-only accessor for the collection ID.
+    pub fn id(&self) -> &CollectionId {
+        &self.id
+    }
+
+    /// Read-only accessor for component IDs.
+    pub fn components(&self) -> &HashSet<ComponentId> {
+        &self.components
     }
 }
 
-#[derive(Debug, Error, Clone, PartialEq)]
+/// Errors that can arise when operating on a Collection aggregate.
+#[derive(Debug, Error, Clone)]
 pub enum CollectionError {
-    #[error("Collection name cannot be empty")]
-    EmptyName,
-}
-
-#[derive(Debug, Clone, Message)]
-#[rtype(result = "()")]
-pub enum CollectionEvent {
-    ComponentAdded(Component),
-    ComponentDropped(Component),
-    ComponentUnchanged(Component),
-}
-
-pub trait Repository {
-    fn list(&self) -> Result<Vec<Collection>, RepositoryError>;
-}
-
-#[derive(Debug, Error)]
-pub enum RepositoryError {
-    #[error("Failed to load collection data: {0}")]
-    LoadError(String),
-
-    #[error("Invalid data in repository: {0}")]
-    InvalidData(String),
+    #[error("Collection `{0}` cannot be empty")]
+    Empty(CollectionId),
 }
