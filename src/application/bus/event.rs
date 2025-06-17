@@ -1,6 +1,6 @@
 use actix::prelude::*;
 
-use crate::domain::collection::CollectionEvent;
+use crate::domain::collection::event::CollectionEvent;
 
 #[derive(Message)]
 #[rtype(result = "()")]
