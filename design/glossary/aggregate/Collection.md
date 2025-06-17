@@ -5,17 +5,7 @@ tags:
 attributes:
   - "[[Collection Id]]"
   - "[[Component Id]]"
-states:
-  - "Created"
 ---
-### 📥 Accepted commands
-
-```dataview
-table description, preconditions
-from "glossary/command"
-where target_aggregate = this.file.link
-```
-
 ### 📤 Emitted events
 
 ```dataview

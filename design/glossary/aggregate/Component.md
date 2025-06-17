@@ -6,20 +6,8 @@ attributes:
   - "[[Component Id]]"
   - "[[Sbom]]"
   - "[[glossary/value_object/Execution Context|Execution Context]]"
-states:
-  - "Registered"
-  - "With Sbom"
-  - "With Execution Context"
-  - "Deprecated"
+  - "deprecated: Boolean"
 ---
-### 📥 Accepted commands
-
-```dataview
-table description, preconditions
-from "glossary/command"
-where target_aggregate = this.file.link
-```
-
 ### 📤 Emitted events
 
 ```dataview
