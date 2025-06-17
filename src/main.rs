@@ -1,4 +1,4 @@
-use actix::prelude::*;
+/*use actix::prelude::*;
 use actix_web::{web, App, HttpServer};
 use std::io;
 use std::sync::Arc;
@@ -68,4 +68,8 @@ async fn main() {
     .expect("Failed binding server")
     .run()
     .await;
+}
+*/
+fn main() {
+    println!("Hello rust!")
 }
