@@ -28,3 +28,6 @@ docs/report/TFG_Adrian_Ramos_Report.pdf
 
 # dist/ trunk folder
 dist/
+
+# Obsidian user side
+.obsidian/workspaces.json
