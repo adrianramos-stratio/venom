@@ -13,6 +13,24 @@ pub struct ComponentId {
     tag: String,
 }
 
+impl ComponentId {
+    pub fn registry(&self) -> &str {
+        &self.registry
+    }
+
+    pub fn namespace(&self) -> Option<&str> {
+        self.namespace.as_deref()
+    }
+
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    pub fn tag(&self) -> &str {
+        &self.tag
+    }
+}
+
 impl FromStr for ComponentId {
     type Err = ComponentIdError;
 

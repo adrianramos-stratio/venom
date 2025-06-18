@@ -1,14 +1,14 @@
 pub mod event;
 pub mod id;
 
-use std::collections::HashSet;
-
 use crate::domain::collection::event::CollectionEvent;
 use crate::domain::collection::id::CollectionId;
 use crate::domain::component::id::ComponentId;
+use crate::domain::shared::aggregate::EventSourcedAggregate;
+use std::collections::HashSet;
+use std::convert::TryFrom;
 use thiserror::Error;
 
-/// Aggregate root representing a logical collection of components.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Collection {
     id: CollectionId,
@@ -16,92 +16,275 @@ pub struct Collection {
 }
 
 impl Collection {
-    /// Create a new collection with a given id and set of components.
-    pub fn new(
+    pub fn create(
         id: CollectionId,
-        components: HashSet<ComponentId>,
-    ) -> Result<(Self, CollectionEvent), CollectionError> {
-        if components.is_empty() {
-            return Err(CollectionError::Empty(id.clone()));
-        }
-
-        let collection = Self {
-            id: id.clone(),
-            components: components.clone(),
-        };
-
-        let event = CollectionEvent::CollectionCreated {
-            collection_id: id,
-            initial_components: components.into_iter().collect(),
-        };
-
-        Ok((collection, event))
+        initial: HashSet<ComponentId>,
+    ) -> Result<CollectionEvent, CollectionError> {
+        (!initial.is_empty())
+            .then(|| CollectionEvent::CollectionCreated {
+                collection_id: id,
+                initial_components: initial.into_iter().collect(),
+            })
+            .ok_or(CollectionError::Empty)
     }
 
-    /// Replace all components with a new set, generating added/dropped events.
     pub fn replace_components(
         &self,
         new_components: HashSet<ComponentId>,
-    ) -> Result<(Self, Vec<CollectionEvent>), CollectionError> {
+    ) -> Result<Vec<CollectionEvent>, CollectionError> {
         if new_components.is_empty() {
-            return Err(CollectionError::Empty(self.id.clone()));
+            return Err(CollectionError::Empty);
         }
 
-        let mut events = Vec::new();
-
-        for removed in self.components.difference(&new_components) {
-            events.push(CollectionEvent::ComponentDropped {
+        let dropped = self
+            .components
+            .difference(&new_components)
+            .cloned()
+            .map(|component_id| CollectionEvent::ComponentDropped {
                 collection_id: self.id.clone(),
-                component_id: removed.clone(),
+                component_id,
             });
-        }
 
-        for added in new_components.difference(&self.components) {
-            events.push(CollectionEvent::ComponentAdded {
+        let added = new_components
+            .difference(&self.components)
+            .cloned()
+            .map(|component_id| CollectionEvent::ComponentAdded {
                 collection_id: self.id.clone(),
-                component_id: added.clone(),
+                component_id,
             });
-        }
 
-        let updated = Self {
-            id: self.id.clone(),
-            components: new_components,
-        };
-
-        Ok((updated, events))
+        Ok(dropped.chain(added).collect())
     }
 
-    /// Apply a single event to mutate the state (used for event sourcing).
-    pub fn apply(&mut self, event: &CollectionEvent) {
-        match event {
-            CollectionEvent::ComponentAdded { component_id, .. } => {
-                self.components.insert(component_id.clone());
-            }
-            CollectionEvent::ComponentDropped { component_id, .. } => {
-                self.components.remove(component_id);
-            }
-            CollectionEvent::CollectionCreated {
-                initial_components, ..
-            } => {
-                self.components = initial_components.iter().cloned().collect();
-            }
-        }
-    }
-
-    /// Read-only accessor for the collection ID.
     pub fn id(&self) -> &CollectionId {
         &self.id
     }
 
-    /// Read-only accessor for component IDs.
     pub fn components(&self) -> &HashSet<ComponentId> {
         &self.components
     }
 }
 
-/// Errors that can arise when operating on a Collection aggregate.
-#[derive(Debug, Error, Clone)]
+impl TryFrom<&CollectionEvent> for Collection {
+    type Error = CollectionError;
+
+    fn try_from(event: &CollectionEvent) -> Result<Self, Self::Error> {
+        match event {
+            CollectionEvent::CollectionCreated {
+                collection_id,
+                initial_components,
+            } => Ok(Self {
+                id: collection_id.clone(),
+                components: initial_components.iter().cloned().collect(),
+            }),
+            _ => Err(CollectionError::InvalidInitialEvent),
+        }
+    }
+}
+
+impl EventSourcedAggregate<CollectionEvent, CollectionError> for Collection {
+    fn from_initial_event(event: &CollectionEvent) -> Result<Self, CollectionError> {
+        Self::try_from(event)
+    }
+
+    fn apply(&mut self, event: &CollectionEvent) -> Result<(), CollectionError> {
+        match event {
+            CollectionEvent::CollectionCreated { .. } => {
+                Err(CollectionError::CreatedEventNotAllowed)
+            }
+            CollectionEvent::ComponentAdded { component_id, .. } => {
+                self.components.insert(component_id.clone());
+                Ok(())
+            }
+            CollectionEvent::ComponentDropped { component_id, .. } => {
+                self.components.remove(component_id);
+                Ok(())
+            }
+        }
+    }
+
+    fn invalid_initial_event() -> CollectionError {
+        CollectionError::InvalidInitialEvent
+    }
+}
+
+#[derive(Debug, Error, Clone, PartialEq, Eq)]
 pub enum CollectionError {
-    #[error("Collection `{0}` cannot be empty")]
-    Empty(CollectionId),
+    #[error("Collection cannot be empty")]
+    Empty,
+
+    #[error("CollectionCreated cannot be applied to an existing Collection")]
+    CreatedEventNotAllowed,
+
+    #[error("Only CollectionCreated can be used to initialize a Collection")]
+    InvalidInitialEvent,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::domain::collection::event::CollectionEvent;
+    use crate::domain::collection::id::CollectionId;
+    use crate::domain::component::id::ComponentId;
+    use crate::domain::shared::aggregate::EventSourcedAggregate;
+    use std::collections::HashSet;
+    use std::str::FromStr;
+
+    fn dummy_id() -> CollectionId {
+        CollectionId::new("test-collection").unwrap()
+    }
+
+    fn comp(id: &str) -> ComponentId {
+        ComponentId::from_str(format!("registry.test/namespace/{id}:v0").as_str()).unwrap()
+    }
+
+    fn initial_components() -> HashSet<ComponentId> {
+        vec![comp("a"), comp("b"), comp("c")].into_iter().collect()
+    }
+
+    #[test]
+    fn create_should_emit_event_with_initial_components() {
+        let id = dummy_id();
+        let components = initial_components();
+        let event = Collection::create(id.clone(), components.clone()).unwrap();
+
+        match event {
+            CollectionEvent::CollectionCreated {
+                collection_id,
+                initial_components,
+            } => {
+                assert_eq!(collection_id, id);
+                assert_eq!(initial_components.len(), 3);
+            }
+            _ => panic!("Expected CollectionCreated"),
+        }
+    }
+
+    #[test]
+    fn create_should_fail_with_empty_set() {
+        let id = dummy_id();
+        let result = Collection::create(id, HashSet::new());
+        assert!(matches!(result, Err(CollectionError::Empty)));
+    }
+
+    #[test]
+    fn try_from_collection_created_should_create_instance() {
+        let id = dummy_id();
+        let comps = initial_components();
+        let event = CollectionEvent::CollectionCreated {
+            collection_id: id.clone(),
+            initial_components: comps.iter().cloned().collect(),
+        };
+
+        let collection = Collection::try_from(&event).unwrap();
+        assert_eq!(collection.id(), &id);
+        assert_eq!(collection.components().len(), 3);
+    }
+
+    #[test]
+    fn try_from_non_initial_event_should_fail() {
+        let id = dummy_id();
+        let event = CollectionEvent::ComponentAdded {
+            collection_id: id.clone(),
+            component_id: comp("z"),
+        };
+
+        let result = Collection::try_from(&event);
+        assert!(matches!(result, Err(CollectionError::InvalidInitialEvent)));
+    }
+
+    #[test]
+    fn replace_components_should_emit_added_and_dropped_events() {
+        let id = dummy_id();
+        let initial: HashSet<ComponentId> = vec![comp("a"), comp("b")].into_iter().collect();
+        let created = CollectionEvent::CollectionCreated {
+            collection_id: id.clone(),
+            initial_components: initial.iter().cloned().collect(),
+        };
+
+        let collection = Collection::from_initial_event(&created).unwrap();
+        let new_comps = vec![comp("b"), comp("c")].into_iter().collect();
+
+        let events = collection.replace_components(new_comps).unwrap();
+        assert_eq!(events.len(), 2);
+
+        assert!(events.iter().any(|e| matches!(
+            e,
+            CollectionEvent::ComponentDropped { component_id, .. } if component_id.name() == "a"
+        )));
+        assert!(events.iter().any(|e| matches!(
+            e,
+            CollectionEvent::ComponentAdded { component_id, .. } if component_id.name() == "c"
+        )));
+    }
+
+    #[test]
+    fn apply_component_added_and_dropped_should_mutate_state() {
+        let id = dummy_id();
+        let comps = initial_components();
+        let created = CollectionEvent::CollectionCreated {
+            collection_id: id.clone(),
+            initial_components: comps.iter().cloned().collect(),
+        };
+
+        let mut collection = Collection::from_initial_event(&created).unwrap();
+        let add = CollectionEvent::ComponentAdded {
+            collection_id: id.clone(),
+            component_id: comp("z"),
+        };
+        let drop = CollectionEvent::ComponentDropped {
+            collection_id: id.clone(),
+            component_id: comp("a"),
+        };
+
+        collection.apply(&add).unwrap();
+        collection.apply(&drop).unwrap();
+
+        assert!(collection.components().contains(&comp("z")));
+        assert!(!collection.components().contains(&comp("a")));
+    }
+
+    #[test]
+    fn apply_collection_created_should_fail_on_existing_state() {
+        let id = dummy_id();
+        let comps = initial_components();
+        let event = CollectionEvent::CollectionCreated {
+            collection_id: id,
+            initial_components: comps.iter().cloned().collect(),
+        };
+
+        let mut collection = Collection::from_initial_event(&event).unwrap();
+        let result = collection.apply(&event);
+        assert!(matches!(
+            result,
+            Err(CollectionError::CreatedEventNotAllowed)
+        ));
+    }
+
+    #[test]
+    fn rehydrate_should_rebuild_full_state() {
+        let id = dummy_id();
+
+        let e1 = CollectionEvent::CollectionCreated {
+            collection_id: id.clone(),
+            initial_components: vec![comp("a"), comp("b")],
+        };
+
+        let e2 = CollectionEvent::ComponentAdded {
+            collection_id: id.clone(),
+            component_id: comp("c"),
+        };
+
+        let e3 = CollectionEvent::ComponentDropped {
+            collection_id: id.clone(),
+            component_id: comp("a"),
+        };
+
+        let collection = Collection::rehydrate(&[e1, e2, e3]).unwrap();
+
+        assert_eq!(collection.components().len(), 2);
+        assert!(collection.components().contains(&comp("b")));
+        assert!(collection.components().contains(&comp("c")));
+        assert!(!collection.components().contains(&comp("a")));
+    }
 }
