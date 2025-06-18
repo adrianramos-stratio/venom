@@ -31,3 +31,6 @@ dist/
 
 # Obsidian user side
 **/.obsidian/workspace.json
+
+# Test sbom path
+sboms/
