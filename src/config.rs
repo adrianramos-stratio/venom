@@ -18,6 +18,24 @@ pub struct Server {
 }
 
 impl VulmanConfig {
+    /// Load the application configuration from a file and environment variables.
+    ///
+    /// This method:
+    /// - Reads the config file path from the environment variable `VULMAN_CONFIG_PATH`
+    ///   (or falls back to the default `"config"`),
+    /// - Parses a configuration file using [`config::File`],
+    /// - Allows overrides from environment variables prefixed with `VULMAN__`,
+    /// - Applies default values like `server.host = "0.0.0.0"`,
+    /// - Deserializes the full configuration into [`VulmanConfig`].
+    ///
+    /// # Errors
+    ///
+    /// Returns a [`ConfigError`] if:
+    /// - The config file cannot be read (e.g. does not exist or has invalid syntax),
+    /// - The environment variable override is malformed,
+    /// - Any required field is missing or fails deserialization.
+    ///
+    /// See [`config::ConfigError`] for full details.
     pub fn load() -> Result<Self, ConfigError> {
         let config_path = std::env::var(CONFIG_PATH_ENV)
             .unwrap_or_else(|_| String::from(DEFAULT_CONFIG_FILE_PATH));

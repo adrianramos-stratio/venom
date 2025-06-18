@@ -14,18 +14,19 @@ pub struct ComponentId {
 }
 
 impl ComponentId {
+    #[must_use]
     pub fn registry(&self) -> &str {
         &self.registry
     }
-
+    #[must_use]
     pub fn namespace(&self) -> Option<&str> {
         self.namespace.as_deref()
     }
-
+    #[must_use]
     pub fn name(&self) -> &str {
         &self.name
     }
-
+    #[must_use]
     pub fn tag(&self) -> &str {
         &self.tag
     }

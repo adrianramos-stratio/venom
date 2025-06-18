@@ -16,6 +16,14 @@ pub struct Collection {
 }
 
 impl Collection {
+    /// Emit an event to create a new collection with a given ID and initial set of components.
+    ///
+    /// This is the only valid way to construct a `Collection` aggregate,
+    /// and must be followed by applying the returned event.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CollectionError::Empty`] if the initial component set is empty.
     pub fn create(
         id: CollectionId,
         initial: HashSet<ComponentId>,
@@ -28,9 +36,17 @@ impl Collection {
             .ok_or(CollectionError::Empty)
     }
 
+    /// Emit events to update the collection by replacing its entire set of components.
+    ///
+    /// Generates a list of [`CollectionEvent::ComponentAdded`] and [`CollectionEvent::ComponentDropped`]
+    /// to reflect the difference between the current and the new set.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CollectionError::Empty`] if the provided set of components is empty.
     pub fn replace_components(
         &self,
-        new_components: HashSet<ComponentId>,
+        new_components: &HashSet<ComponentId>,
     ) -> Result<Vec<CollectionEvent>, CollectionError> {
         if new_components.is_empty() {
             return Err(CollectionError::Empty);
@@ -38,7 +54,7 @@ impl Collection {
 
         let dropped = self
             .components
-            .difference(&new_components)
+            .difference(new_components)
             .cloned()
             .map(|component_id| CollectionEvent::ComponentDropped {
                 collection_id: self.id.clone(),
@@ -56,11 +72,13 @@ impl Collection {
         Ok(dropped.chain(added).collect())
     }
 
-    pub fn id(&self) -> &CollectionId {
+    #[must_use]
+    pub const fn id(&self) -> &CollectionId {
         &self.id
     }
 
-    pub fn components(&self) -> &HashSet<ComponentId> {
+    #[must_use]
+    pub const fn components(&self) -> &HashSet<ComponentId> {
         &self.components
     }
 }
@@ -203,9 +221,9 @@ mod tests {
         };
 
         let collection = Collection::from_initial_event(&created).unwrap();
-        let new_comps = vec![comp("b"), comp("c")].into_iter().collect();
+        let new_comps: HashSet<ComponentId> = vec![comp("b"), comp("c")].into_iter().collect();
 
-        let events = collection.replace_components(new_comps).unwrap();
+        let events = collection.replace_components(&new_comps).unwrap();
         assert_eq!(events.len(), 2);
 
         assert!(events.iter().any(|e| matches!(

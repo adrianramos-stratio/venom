@@ -71,5 +71,5 @@ async fn main() {
 }
 */
 fn main() {
-    println!("Hello rust!")
+    println!("Hello rust!");
 }

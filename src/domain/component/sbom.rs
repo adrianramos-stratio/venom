@@ -10,20 +10,37 @@ pub struct Sbom {
 }
 
 impl Sbom {
-    pub fn new(location: SbomLocation) -> Self {
+    #[must_use]
+    pub const fn new(location: SbomLocation) -> Self {
         Self { location }
     }
 
-    pub fn location(&self) -> &SbomLocation {
+    #[must_use]
+    pub const fn location(&self) -> &SbomLocation {
         &self.location
     }
 
+    /// Attempt to create an SBOM from a remote URL string.
+    ///
+    /// The input must be a well-formed URL (e.g. `https://`, `s3://`, etc.).
+    ///
+    /// # Errors
+    ///
+    /// Returns [`SbomLocationError::InvalidUrl`] if the string is not a valid URL.
     pub fn from_url_str(s: &str) -> Result<Self, SbomLocationError> {
         let url =
             Url::parse(s).map_err(|e| SbomLocationError::InvalidUrl(s.into(), e.to_string()))?;
         Ok(Self::new(SbomLocation::remote(url)))
     }
 
+    /// Attempt to create an SBOM from a local filesystem path string.
+    ///
+    /// The provided string must represent a valid and existing path.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`SbomLocationError::InvalidPathFormat`] if the string is empty or invalid as a path,
+    /// or [`SbomLocationError::NonExistentPath`] if the path does not exist on disk.
     pub fn from_path_str(s: &str) -> Result<Self, SbomLocationError> {
         let path = PathBuf::from(s);
         if path.as_os_str().is_empty() {
@@ -58,9 +75,9 @@ impl From<PathBuf> for Sbom {
 impl TryFrom<&str> for Sbom {
     type Error = SbomLocationError;
     fn try_from(value: &str) -> Result<Self, Self::Error> {
-        Sbom::from_url_str(value)
-            .or_else(|_| Sbom::from_path_str(value))
-            .map_err(|_| SbomLocationError::NotUrlNorPath(value.to_string()))
+        Self::from_url_str(value)
+            .or_else(|_| Self::from_path_str(value))
+            .map_err(|_| Self::Error::NotUrlNorPath(value.to_string()))
     }
 }
 
@@ -71,7 +88,8 @@ pub enum SbomLocation {
 }
 
 impl SbomLocation {
-    pub fn remote(url: Url) -> Self {
+    #[must_use]
+    pub const fn remote(url: Url) -> Self {
         Self::Remote(url)
     }
 
@@ -83,8 +101,8 @@ impl SbomLocation {
 impl fmt::Display for SbomLocation {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            SbomLocation::Local(p) => write!(f, "file://{}", p.display()),
-            SbomLocation::Remote(url) => write!(f, "{}", url),
+            Self::Local(p) => write!(f, "file://{}", p.display()),
+            Self::Remote(url) => write!(f, "{url}"),
         }
     }
 }

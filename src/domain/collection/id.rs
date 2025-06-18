@@ -4,6 +4,13 @@ use std::fmt;
 pub struct CollectionId(String);
 
 impl CollectionId {
+    /// Create a new `CollectionId` from a string-like input.
+    ///
+    /// The provided ID must not be empty and must follow naming rules defined by the domain.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CollectionIdError::Empty`] if the provided ID string is empty.
     pub fn new(id: impl Into<String>) -> Result<Self, CollectionIdError> {
         let s = id.into();
         if s.trim().is_empty() {
@@ -12,6 +19,7 @@ impl CollectionId {
         Ok(Self(s))
     }
 
+    #[must_use]
     pub fn as_str(&self) -> &str {
         &self.0
     }

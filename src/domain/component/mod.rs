@@ -20,7 +20,8 @@ pub struct Component {
 }
 
 impl Component {
-    pub fn new(id: ComponentId) -> Self {
+    #[must_use]
+    pub const fn new(id: ComponentId) -> Self {
         Self {
             id,
             sbom: None,
@@ -30,11 +31,18 @@ impl Component {
     }
 
     /// Emit event for registering a new component
-    pub fn register(id: ComponentId) -> ComponentEvent {
+    #[must_use]
+    pub const fn register(id: ComponentId) -> ComponentEvent {
         ComponentEvent::ComponentRegistered { component_id: id }
     }
 
-    /// Emit event to deprecate the component
+    /// Emit an event to mark the component as deprecated.
+    ///
+    /// This operation can only be performed once.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ComponentError::AlreadyDeprecated`] if the component has already been deprecated.
     pub fn deprecate(&self) -> Result<ComponentEvent, ComponentError> {
         if self.deprecated {
             Err(ComponentError::AlreadyDeprecated(self.id.clone()))
@@ -45,7 +53,13 @@ impl Component {
         }
     }
 
-    /// Emit event to assign an SBOM
+    /// Emit an event to assign the initial SBOM to the component.
+    ///
+    /// This method ensures that an SBOM can only be assigned once.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ComponentError::SbomAlreadyAssigned`] if the component already has an SBOM.
     pub fn assign_sbom(&self, sbom: Sbom) -> Result<ComponentEvent, ComponentError> {
         if self.sbom.is_some() {
             Err(ComponentError::SbomAlreadyAssigned(self.id.clone()))
@@ -57,7 +71,13 @@ impl Component {
         }
     }
 
-    /// Emit event to assign execution context
+    /// Emit an event to assign an initial execution context to the component.
+    ///
+    /// This method fails if the component already has an execution context assigned.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ComponentError::ExecutionContextAlreadyAssigned`] if a context has already been assigned.
     pub fn assign_execution_context(
         &self,
         context: ExecutionContext,
@@ -74,32 +94,44 @@ impl Component {
         }
     }
 
-    /// Emit event to replace execution context
+    /// Emit an event to replace the current execution context of the component.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ComponentError::ExecutionContextNotAssigned`] if no execution context was assigned yet.
     pub fn replace_execution_context(
         &self,
         context: ExecutionContext,
     ) -> Result<ComponentEvent, ComponentError> {
-        Ok(ComponentEvent::ExecutionContextReplaced {
-            component_id: self.id.clone(),
-            context,
-        })
+        if self.context.is_none() {
+            Err(ComponentError::ExecutionContextNotAssigned(self.id.clone()))
+        } else {
+            Ok(ComponentEvent::ExecutionContextReplaced {
+                component_id: self.id.clone(),
+                context,
+            })
+        }
     }
 
     // Accessors
 
-    pub fn id(&self) -> &ComponentId {
+    #[must_use]
+    pub const fn id(&self) -> &ComponentId {
         &self.id
     }
 
-    pub fn sbom(&self) -> Option<&Sbom> {
+    #[must_use]
+    pub const fn sbom(&self) -> Option<&Sbom> {
         self.sbom.as_ref()
     }
 
-    pub fn context(&self) -> Option<&ExecutionContext> {
+    #[must_use]
+    pub const fn context(&self) -> Option<&ExecutionContext> {
         self.context.as_ref()
     }
 
-    pub fn is_deprecated(&self) -> bool {
+    #[must_use]
+    pub const fn is_deprecated(&self) -> bool {
         self.deprecated
     }
 }
@@ -119,7 +151,7 @@ impl TryFrom<&ComponentEvent> for Component {
 
 impl EventSourcedAggregate<ComponentEvent, ComponentError> for Component {
     fn from_initial_event(event: &ComponentEvent) -> Result<Self, ComponentError> {
-        Component::try_from(event)
+        Self::try_from(event)
     }
 
     fn apply(&mut self, event: &ComponentEvent) -> Result<(), ComponentError> {
@@ -158,6 +190,9 @@ pub enum ComponentError {
 
     #[error("Component `{0}` already has an SBOM assigned")]
     SbomAlreadyAssigned(ComponentId),
+
+    #[error("Component `{0}` has no execution context assigned")]
+    ExecutionContextNotAssigned(ComponentId),
 
     #[error("Component `{0}` already has an execution context assigned")]
     ExecutionContextAlreadyAssigned(ComponentId),
