@@ -15,6 +15,7 @@ pub struct ComponentRegisteredEvent {
 }
 
 impl ComponentRegisteredEvent {
+    #[must_use]
     pub fn new(payload: ComponentEvent) -> Self {
         Self {
             id: Uuid::new_v4(),

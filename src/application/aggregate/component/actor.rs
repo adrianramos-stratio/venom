@@ -36,8 +36,8 @@ impl Handler<ComponentCommand> for ComponentActor {
         }
 
         let event = match kind {
-            ComponentCommandKind::AssignSbom(sbom) => self.state.assign_sbom(sbom.clone()),
-            ComponentCommandKind::Register => Err(ComponentError::AlreadyRegistered(id.clone())),
+            ComponentCommandKind::AssignSbom(sbom) => self.state.assign_sbom(sbom),
+            ComponentCommandKind::Register => Err(ComponentError::AlreadyRegistered(id)),
         }?;
 
         tracing::info!("Persist event");

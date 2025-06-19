@@ -64,7 +64,7 @@ impl InMemoryEventBus {
         let mut map = self
             .listeners
             .write()
-            .map_err(|e| EventBusError::RegistrationError(format!("Lock poisoned: {}", e)))?;
+            .map_err(|e| EventBusError::RegistrationError(format!("Lock poisoned: {e}")))?;
 
         let entry = map.entry(TypeId::of::<E>()).or_default();
 

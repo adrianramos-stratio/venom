@@ -6,7 +6,7 @@ const DEFAULT_CONFIG_FILE_PATH: &str = "config";
 const DEFAULT_HOST: &str = "0.0.0.0";
 
 #[derive(Debug, Deserialize)]
-pub struct VulmanConfig {
+pub struct VenomConfig {
     pub server: Server,
     pub sboms_path: String,
 }
@@ -17,7 +17,7 @@ pub struct Server {
     pub port: u16,
 }
 
-impl VulmanConfig {
+impl VenomConfig {
     /// Load the application configuration from a file and environment variables.
     ///
     /// This method:
