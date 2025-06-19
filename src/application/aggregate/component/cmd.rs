@@ -4,7 +4,7 @@ use crate::domain::component::{
 use actix::Message;
 use std::fmt;
 
-#[derive(Message)]
+#[derive(Message, Debug, Clone)]
 #[rtype(result = "Result<ComponentRegisteredAck, String>")]
 pub struct RegisterComponent {
     pub id: ComponentId,
@@ -26,7 +26,7 @@ impl fmt::Debug for ComponentRegisteredAck {
     }
 }
 
-#[derive(Message)]
+#[derive(Message, Debug, Clone)]
 #[rtype(result = "()")]
 pub struct AssignSbomToComponent {
     pub id: ComponentId,

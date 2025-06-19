@@ -1,59 +1,56 @@
-use actix::Actor;
-use std::{io, str::FromStr};
+use std::str::FromStr;
+
+use actix::prelude::*;
 use tracing::info;
 use tracing_subscriber::EnvFilter;
+use venom::application::aggregate::component::cmd::AssignSbomToComponent;
+use venom::domain::component::sbom::Sbom;
 use venom::{
     application::{
         aggregate::component::{cmd::RegisterComponent, supervisor::ComponentSupervisor},
-        saga::sbom_generation::{HandleComponentRegistered, SbomGenerationSaga},
+        shared::command::CommandBus,
     },
-    config::VulmanConfig,
-    domain::component::{event::ComponentEvent, id::ComponentId},
-    infrastructure::generator::syft::SyftSbomGenerator,
+    domain::component::id::ComponentId,
 };
 
 #[actix::main]
 async fn main() {
     tracing_subscriber::fmt()
         .with_env_filter(
-            EnvFilter::from_default_env().add_directive("venom=debug".parse().unwrap()),
+            EnvFilter::from_default_env().add_directive("venom=trace".parse().unwrap()),
         )
         .init();
 
-    info!("Starting Vulman...");
+    info!("🚀 Starting system with CommandBus");
 
-    let config = VulmanConfig::load()
-        .map_err(|e| {
-            io::Error::new(
-                io::ErrorKind::InvalidInput,
-                format!("Error loading settings: {e}"),
-            )
-            //})?;
-        })
-        .unwrap();
+    let mut bus = CommandBus::default();
 
-    let generator = SyftSbomGenerator::new(&config.sboms_path).unwrap();
     let supervisor = ComponentSupervisor::new().start();
-    let saga = SbomGenerationSaga {
-        generator: Box::new(generator),
-        supervisor: supervisor.clone(),
+    bus.register(supervisor);
+
+    let id = ComponentId::from_str("docker.io/library/nginx:1.21").unwrap();
+    //let cmd = RegisterComponent { id };
+    let cmd = Box::new(RegisterComponent { id });
+
+    //let result = bus.dispatch(Box::new(cmd)).await;
+    let result = bus.dispatch(cmd);
+
+    match result {
+        Ok(()) => info!("✅ Command dispatched successfully."),
+        Err(e) => info!("❌ Command dispatch failed: {e}"),
     }
-    .start();
 
-    let id = ComponentId::from_str("docker.io/alpine:3.11").unwrap();
+    let cmd2 = Box::new(AssignSbomToComponent {
+        id: ComponentId::from_str("docker.io/library/nginx:1.21").unwrap(),
+        sbom: Sbom::from_url_str("https://raw.githubusercontent.com/CycloneDX/bom-examples/refs/heads/master/SBOM/laravel-7.12.0/bom.1.2.json").unwrap(),
+    });
 
-    // Registrar componente (esto lanza al actor supervisor)
-    let _ack = supervisor
-        .send(RegisterComponent { id: id.clone() })
-        .await
-        .unwrap();
-    let handled = saga
-        .send(HandleComponentRegistered(
-            ComponentEvent::ComponentRegistered {
-                component_id: id.clone(),
-            },
-        ))
-        .await;
+    let result = bus.dispatch(cmd2);
 
-    tracing::info!("Sent event: handled = {:?}", handled);
+    match result {
+        Ok(()) => info!("✅ Second command dispatched successfully."),
+        Err(e) => info!("❌ Second command failed: {e}"),
+    }
+
+    actix::clock::sleep(std::time::Duration::from_secs(1)).await;
 }
