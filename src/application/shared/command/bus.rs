@@ -2,9 +2,9 @@ use std::any::TypeId;
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use super::command::AppCommand;
 use super::handler::{CommandHandler, FnHandler, HandlesCommand};
 use super::registry::RegistersCommands;
+use super::AppCommand;
 
 /// Central bus responsible for dispatching commands to their handlers.
 ///
@@ -62,26 +62,28 @@ impl CommandBus {
     /// This is fire-and-forget: the command is sent and processed asynchronously via `actix::spawn`.
     /// The caller does **not** wait for completion, but we **do check upfront** if a handler exists.
     ///
-    /// Returns `Ok(())` if the command was accepted for dispatch,
-    /// or `Err(...)` if no handler was registered for its type.
+    /// # Errors
+    ///
+    /// Returns `Err` if no handler has been registered for the given command type.
     pub fn dispatch(&self, cmd: Box<dyn AppCommand>) -> Result<(), String> {
         let type_id = (*cmd).type_id();
         tracing::trace!("Dispatching: {:?}", type_id);
 
-        if let Some(handler) = self.routes.get(&type_id) {
-            let handler = handler.clone(); // Clone Arc to move into async task
+        self.routes.get(&type_id).map_or_else(
+            || Err(format!("No handler registered for command: {type_id:?}")),
+            |handler| {
+                let handler = handler.clone(); // Clone Arc to move into async task
 
-            tracing::info!("🚀 Launching handler for command with TypeId {:?}", type_id);
-            // Spawn the command execution in the background.
-            actix::spawn(async move {
-                if let Err(err) = handler.handle(cmd).await {
-                    tracing::warn!("Command handler returned error: {}", err);
-                }
-            });
+                tracing::info!("🚀 Launching handler for command with TypeId {type_id:?}");
+                // Spawn the command execution in the background.
+                actix::spawn(async move {
+                    if let Err(err) = handler.handle(cmd).await {
+                        tracing::warn!("Command handler returned error: {err}");
+                    }
+                });
 
-            Ok(())
-        } else {
-            Err(format!("No handler registered for command: {:?}", type_id))
-        }
+                Ok(())
+            },
+        )
     }
 }

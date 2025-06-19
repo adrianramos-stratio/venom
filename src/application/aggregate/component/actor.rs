@@ -7,7 +7,8 @@ pub struct ComponentActor {
 }
 
 impl ComponentActor {
-    pub fn new(state: Component) -> Self {
+    #[must_use]
+    pub const fn new(state: Component) -> Self {
         Self { state }
     }
 }

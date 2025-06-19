@@ -13,6 +13,7 @@ pub struct ComponentSupervisor {
 }
 
 impl ComponentSupervisor {
+    #[must_use]
     pub fn new() -> Self {
         Self {
             components: HashMap::new(),
@@ -30,14 +31,14 @@ impl Handler<RegisterComponent> for ComponentSupervisor {
     fn handle(&mut self, msg: RegisterComponent, _: &mut Context<Self>) -> Self::Result {
         let key = msg.id.to_string();
         if self.components.contains_key(&key) {
-            return Err(format!("Component {} already exists", key));
+            return Err(format!("Component {key} already exists"));
         }
 
         let event = Component::register(msg.id.clone());
         match Component::try_from(&event) {
             Ok(component) => {
                 let addr = ComponentActor::new(component).start();
-                self.components.insert(key.clone(), addr);
+                self.components.insert(key, addr);
 
                 Ok(ComponentRegisteredAck { id: msg.id })
             }
@@ -51,7 +52,7 @@ impl Handler<AssignSbomToComponent> for ComponentSupervisor {
 
     fn handle(&mut self, msg: AssignSbomToComponent, _: &mut Context<Self>) {
         if let Some(actor) = self.components.get(&msg.id.to_string()) {
-            let _ = actor.do_send(AssignSbom { sbom: msg.sbom });
+            let () = actor.do_send(AssignSbom { sbom: msg.sbom });
         }
     }
 }

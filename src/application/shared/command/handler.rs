@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 
-use super::command::AppCommand;
+use super::AppCommand;
 
 /// Alias for boxed asynchronous future returning a result.
 pub type BoxFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
