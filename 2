@@ -1,18 +1,20 @@
-use actix::{Actor, Context, Handler, Message, Supervised};
+use actix::{Actor, Context, Handler, Supervised, Message};
+use tracing::info;
+use uuid::Uuid;
 
-use crate::application::aggregate::component::cmd::{ComponentCommand, ComponentCommandKind};
+use crate::application::aggregate::component::cmd::AssignSbomToComponent;
 use crate::application::aggregate::component::supervisor::ComponentSupervisor;
 use crate::application::service::sbom_generator::SbomGenerator;
-use crate::application::shared::event::bus::EventBus;
 use crate::domain::component::event::ComponentEvent;
+use crate::domain::component::id::ComponentId;
 
 /// Saga actor responsible for reacting to component registration events
 pub struct SbomGenerationSaga<EB>
 where
-    EB: EventBus + Send + Sync + 'static,
+    EB: crate::application::shared::event::bus::EventBus + Send + Sync + 'static,
 {
     pub supervisor: actix::Addr<ComponentSupervisor<EB>>,
-    pub generator: Box<dyn SbomGenerator>,
+    pub generator: SbomGenerator,
 }
 
 impl<EB> Actor for SbomGenerationSaga<EB>
@@ -40,9 +42,9 @@ where
             match self.generator.generate(&component_id) {
                 Ok(sbom) => {
                     tracing::info!("SBOM generated successfully");
-                    self.supervisor.do_send(ComponentCommand {
+                    self.supervisor.do_send(AssignSbomToComponent {
                         id: component_id,
-                        kind: ComponentCommandKind::AssignSbom(sbom),
+                        sbom,
                     });
                 }
                 Err(err) => {

@@ -1,11 +1,9 @@
 use crate::domain::component::context::ExecutionContext;
 use crate::domain::component::id::ComponentId;
 use crate::domain::component::sbom::Sbom;
-use actix::Message;
 
 /// Domain events emitted by the `Component` aggregate.
-#[derive(Debug, Clone, Message, PartialEq, Eq)]
-#[rtype(result = "()")]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ComponentEvent {
     /// A new component has been registered with the given identifier.
     ComponentRegistered { component_id: ComponentId },

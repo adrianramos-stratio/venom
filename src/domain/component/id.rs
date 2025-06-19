@@ -1,6 +1,5 @@
 use std::{fmt, str::FromStr};
 use thiserror::Error;
-use tracing::warn;
 
 const DEFAULT_REGISTRY: &str = "docker.io";
 const LATEST_TAG: &str = "latest";
@@ -47,7 +46,7 @@ impl FromStr for ComponentId {
         };
 
         if tag.eq_ignore_ascii_case(LATEST_TAG) {
-            warn!("{s} uses '{LATEST_TAG}' as a tag, which is discouraged.");
+            tracing::warn!("{s} uses '{LATEST_TAG}' as a tag, which is discouraged.");
         }
 
         let segments: Vec<&str> = reference.split('/').collect();

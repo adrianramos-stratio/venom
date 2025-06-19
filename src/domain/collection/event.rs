@@ -1,9 +1,7 @@
 use crate::domain::collection::id::CollectionId;
 use crate::domain::component::id::ComponentId;
-use actix::Message;
 
-#[derive(Debug, Clone, Message, PartialEq, Eq)]
-#[rtype(result = "()")]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CollectionEvent {
     /// A new collection was created with an initial set of components
     CollectionCreated {

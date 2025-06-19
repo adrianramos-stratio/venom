@@ -202,6 +202,9 @@ pub enum ComponentError {
 
     #[error("Only `ComponentRegistered` can be used to initialize a Component")]
     InvalidInitialEvent,
+
+    #[error("Inconsistent ids: `{0}` != `{1}`")]
+    InconsistentIds(String, String),
 }
 
 #[cfg(test)]

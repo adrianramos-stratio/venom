@@ -1,95 +1,97 @@
-use super::actor::ComponentActor;
-use super::cmd::{AssignSbom, AssignSbomToComponent, ComponentRegisteredAck, RegisterComponent};
-use crate::application::shared::command::CommandBus;
-use crate::application::shared::command::HandlesCommand;
-use crate::application::shared::command::RegistersCommands;
-use crate::domain::component::Component;
-use actix::prelude::*;
-use async_trait::async_trait;
 use std::collections::HashMap;
+use std::sync::Arc;
 
-pub struct ComponentSupervisor {
-    components: HashMap<String, Addr<ComponentActor>>,
+use actix::{Actor, Addr, Context, Handler};
+
+use crate::application::aggregate::component::actor::ComponentActor;
+use crate::application::aggregate::component::cmd::{ComponentCommand, ComponentCommandKind};
+use crate::application::aggregate::component::event::ComponentRegisteredEvent;
+use crate::application::shared::command::bus::CommandBus;
+use crate::application::shared::command::handler::HandlesCommand;
+use crate::application::shared::command::RegistersCommands;
+use crate::application::shared::event::bus::EventBus;
+use crate::domain::component::id::ComponentId;
+use crate::domain::component::{Component, ComponentError};
+use crate::domain::shared::aggregate::EventSourcedAggregate;
+
+#[derive(Clone)]
+pub struct ComponentSupervisor<EB>
+where
+    EB: EventBus + Send + Sync + 'static,
+{
+    children: HashMap<ComponentId, Addr<ComponentActor>>,
+    event_bus: Arc<EB>,
 }
 
-impl ComponentSupervisor {
-    #[must_use]
-    pub fn new() -> Self {
-        Self {
-            components: HashMap::new(),
-        }
-    }
-}
-
-impl Actor for ComponentSupervisor {
+impl<EB> Actor for ComponentSupervisor<EB>
+where
+    EB: EventBus + Send + Sync + 'static,
+{
     type Context = Context<Self>;
 }
 
-impl Handler<RegisterComponent> for ComponentSupervisor {
-    type Result = Result<ComponentRegisteredAck, String>;
-
-    fn handle(&mut self, msg: RegisterComponent, _: &mut Context<Self>) -> Self::Result {
-        let key = msg.id.to_string();
-        if self.components.contains_key(&key) {
-            return Err(format!("Component {key} already exists"));
+impl<EB> ComponentSupervisor<EB>
+where
+    EB: EventBus + Send + Sync + 'static,
+{
+    pub fn new(event_bus: Arc<EB>) -> Self {
+        Self {
+            children: HashMap::new(),
+            event_bus,
         }
+    }
+}
 
-        let event = Component::register(msg.id.clone());
-        match Component::try_from(&event) {
-            Ok(component) => {
-                let addr = ComponentActor::new(component).start();
-                self.components.insert(key, addr);
+impl<EB> Handler<ComponentCommand> for ComponentSupervisor<EB>
+where
+    EB: EventBus + Send + Sync + 'static,
+{
+    type Result = Result<(), ComponentError>;
 
-                Ok(ComponentRegisteredAck { id: msg.id })
+    fn handle(&mut self, cmd: ComponentCommand, _ctx: &mut Context<Self>) -> Self::Result {
+        let ComponentCommand { ref id, ref kind } = cmd;
+
+        if let ComponentCommandKind::Register = kind {
+            tracing::info!("Check if new component id is in the journal");
+            tracing::info!("Throw an exception if is");
+            let event = Component::register(id.clone());
+            let component = Component::from_initial_event(&event)?;
+            tracing::info!("Persist {component:?} in journal");
+            let _ = self.event_bus.publish(ComponentRegisteredEvent::new(event));
+            Ok(())
+        } else {
+            if !self.children.contains_key(id) {
+                tracing::info!("Check if id exists in journal");
+                let component = Component::new(id.clone());
+                let actor = ComponentActor::new(component).start();
+                tracing::info!("Register actor addr {actor:?}")
+                // self.children.insert(id.clone(), actor);
             }
-            Err(e) => Err(e.to_string()),
-        }
-    }
-}
 
-impl Handler<AssignSbomToComponent> for ComponentSupervisor {
-    type Result = ();
-
-    fn handle(&mut self, msg: AssignSbomToComponent, _: &mut Context<Self>) {
-        if let Some(actor) = self.components.get(&msg.id.to_string()) {
-            let () = actor.do_send(AssignSbom { sbom: msg.sbom });
-        }
-    }
-}
-
-#[async_trait]
-impl HandlesCommand<RegisterComponent> for Addr<ComponentSupervisor> {
-    async fn handle(&self, cmd: RegisterComponent) -> Result<(), String> {
-        tracing::info!("Inside Handler 1!");
-        match self.send(cmd).await {
-            Ok(Ok(_ack)) => {
-                tracing::info!("RegisterComponent complete!!");
-                Ok(())
+            if let Some(actor) = self.children.get(id) {
+                actor.do_send(cmd.clone());
             }
-            Ok(Err(e)) => Err(e),
-            Err(mailbox_err) => Err(format!("Mailbox error: {mailbox_err}")),
+            Ok(())
         }
     }
 }
 
-#[async_trait]
-impl HandlesCommand<AssignSbomToComponent> for Addr<ComponentSupervisor> {
-    async fn handle(&self, cmd: AssignSbomToComponent) -> Result<(), String> {
-        tracing::info!("Inside Handler 2!");
-        match self.send(cmd).await {
-            Ok(()) => {
-                tracing::info!("AssignSbomToComponent complete!!");
-                Ok(())
-            }
-            Err(mailbox_err) => Err(format!("Mailbox error: {mailbox_err}")),
-        }
+#[async_trait::async_trait]
+impl<EB> HandlesCommand<ComponentCommand> for Addr<ComponentSupervisor<EB>>
+where
+    EB: EventBus + Send + Sync + 'static,
+{
+    async fn handle(&self, cmd: ComponentCommand) -> Result<(), String> {
+        self.do_send(cmd);
+        Ok(())
     }
 }
 
-impl RegistersCommands for Addr<ComponentSupervisor> {
+impl<EB> RegistersCommands for Addr<ComponentSupervisor<EB>>
+where
+    EB: EventBus + Send + Sync + 'static,
+{
     fn register_with(self, bus: &mut CommandBus) {
-        tracing::info!("✅ Registering handler for RegisterComponent");
-        bus.register_handler::<RegisterComponent, Self>(self.clone());
-        bus.register_handler::<AssignSbomToComponent, Self>(self);
+        bus.register_handler::<ComponentCommand, Self>(self);
     }
 }
